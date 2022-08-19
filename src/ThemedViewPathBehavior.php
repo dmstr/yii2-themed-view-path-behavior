@@ -52,7 +52,7 @@ class ThemedViewPathBehavior extends \yii\base\Behavior
     public $useAsBasePath = false;
 
     /**
-     * optionally define path key fot the theme pathMap.
+     * optionally define path key for the theme pathMap.
      * If not set owner->getViewPath() will be used
      *
      * @var
