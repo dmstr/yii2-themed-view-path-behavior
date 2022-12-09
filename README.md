@@ -291,7 +291,7 @@ class LatestJobs extends \yii\base\Widget
 }
 ```
 
-generated pathMap for ProductController:
+generated pathMap for the widget:
 ```
 [
     '/app/project/src/modules/frontend/widgets/careerportal/views' => [
