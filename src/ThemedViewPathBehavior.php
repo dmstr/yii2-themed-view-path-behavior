@@ -10,7 +10,9 @@
 namespace dmstr\themedViewPath;
 
 use yii\base\Controller;
+use yii\base\Module;
 use yii\base\Theme;
+use yii\base\Widget;
 use yii\helpers\ArrayHelper;
 
 /**
@@ -23,6 +25,16 @@ use yii\helpers\ArrayHelper;
  */
 class ThemedViewPathBehavior extends \yii\base\Behavior
 {
+
+    /**
+     * Value for $pathOrder: given paths will be prepended to owners viewPath
+     */
+    const MAP_PREPEND = 'prepend';
+
+    /**
+     * Value for $pathOrder: given paths will be appended to owners viewPath
+     */
+    const MAP_APPEND = 'append';
 
     /**
      * additional view paths that should be set as pathMap via theming
@@ -60,15 +72,40 @@ class ThemedViewPathBehavior extends \yii\base\Behavior
     public $srcPath;
 
     /**
-     * declare handler for EVENT_BEFORE_ACTION
+     * define if given paths should be appended (default) or prepended to the owners viewPath
+     * as this defines the order in which yii will try to get the view (first match), use this flag to define if owners
+     * viewPath should be fallback (prepend) or alternative (append)
+     *
+     * @var string MAP_APPEND|MAP_PREPEND
+     */
+    public $pathOrder = self::MAP_APPEND;
+
+    /**
+     * declare handler for EVENT_* according to owner type
      *
      * @inheritdoc
      */
     public function events()
     {
-        return [
+
+        $events = [
             Controller::EVENT_BEFORE_ACTION => 'setThemedViewPath',
         ];
+
+        if ($this->owner instanceof Module) {
+            $events = [
+                Module::EVENT_BEFORE_ACTION => 'setThemedViewPath',
+            ];
+        }
+
+        if ($this->owner instanceof Widget) {
+            $events = [
+                Widget::EVENT_BEFORE_RUN => 'setThemedViewPath',
+            ];
+        }
+
+        return $events;
+
     }
 
     /**
@@ -81,26 +118,40 @@ class ThemedViewPathBehavior extends \yii\base\Behavior
     {
 
         $srcPath = $this->getOwnerSrcViewPath();
-        $srcBase = basename($srcPath);
 
-        if (empty($srcPath) || empty($this->pathMap)) {
+        if (empty($srcPath)) {
             \Yii::warning(__CLASS__ . ' called without valid path configs');
             return false;
         }
 
-        // set default view Path in map
-        $map = [
-            $srcPath,
-        ];
+        if (empty($this->pathMap) && empty($this->subDirs)) {
+            \Yii::warning(__CLASS__ . ' called without valid path configs (none of patchMap|subDirs is defined)');
+            return false;
+        }
 
-        // add additional dirs given via pathMap property
-        // ensure array
-        if (!is_array($this->pathMap)) {
-            $this->pathMap = [$this->pathMap];
+        // get basePath from srcPath,
+        // will be used for building map with useAsBasePath == true and for subDirs
+        $srcBase = basename($srcPath);
+
+        // init map
+        $map = [];
+        // preprend || append ?
+        self::MAP_APPEND === $this->pathOrder && $map[] = $srcPath;
+
+        // if defined, add given pathMap entries
+        if (!empty($this->pathMap)) {
+            // add additional dirs given via pathMap property
+            // ensure array
+            if (!is_array($this->pathMap)) {
+                $this->pathMap = [$this->pathMap];
+            }
+            foreach ($this->pathMap as $path) {
+                $map[] = $this->useAsBasePath ? implode(DIRECTORY_SEPARATOR, [rtrim($path, '/'), $srcBase]) : $path;
+            }
         }
-        foreach ($this->pathMap as $path) {
-            $map[] = $this->useAsBasePath ? implode(DIRECTORY_SEPARATOR, [rtrim($path, '/'), $srcBase]) : $path;
-        }
+
+        // preprend || append ?
+        self::MAP_PREPEND === $this->pathOrder && $map[] = $srcPath;
 
         // if defined, add given subDirs to the already defined paths
         // this is done here (and not within loop above), because this way we can add sudirs with or without additional pathMap entries
@@ -155,6 +206,8 @@ class ThemedViewPathBehavior extends \yii\base\Behavior
             return $this->srcPath;
         }
 
+        // as Module is not instanceof ViewContextInterface (like controllers or widgets)
+        // we must check via owner->hasMethod here.
         if ($this->owner->hasMethod('getViewPath')) {
             return $this->owner->getViewPath();
         }
